@@ -12,7 +12,6 @@
 #include <sys/stat.h>
 
 #include <wiringPi.h>
-#include "error_report.h"
 
 //=========================================
 /// Constants
@@ -48,6 +47,14 @@ typedef enum RobState
 { 
 	LOAD, WAIT, INIT, CHECK_START, STRAT, ACTION, BLOCKED, RECUP, END 
 }RobState;
+
+typedef enum ActionType {
+	ACTION_MOVE,
+	ACTION_WAIT,
+	ACTION_TURN,
+	ACTION_STOP,
+	NUM_ACTIONS
+} ActionType;
 
 //----------------------------------------------------------------
 // Global vars
@@ -448,7 +455,7 @@ void selectNextAction(void)
 		printf ("Can proceed. Action %d\n", act_count);
 	switch(act_count)
 	{
-	case 0:
+	case ACTION_MOVE:
 		puts("======= MOVE ACTION=============");
 		cmd_val = 200; //mm
 		int t = piThreadCreate (move) ;
@@ -459,11 +466,11 @@ void selectNextAction(void)
 		}
 		state = ACTION;
 		break;
-	case 1:
+	case ACTION_WAIT:
 		puts("======= Waiting =============");
 		delay(500);
 		break;
-	case 2:
+	case ACTION_TURN:
 		puts("======= turn ACTION=============");
 		cmd_val = 180; //deg
 		int t1 = piThreadCreate (turn) ;
