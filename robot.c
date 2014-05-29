@@ -45,8 +45,9 @@
 #define COLOR_SELECT 2
 //relay control
 //?
+#define RELAY_OUT_PIN 4
 
-#define DIST_THRESHOLD 10 //cm
+#define DIST_THRESHOLD 20 //cm
 
 #define MD25ADDRESS 0x58          // Address of MD25 shifted one bit
 
@@ -131,6 +132,7 @@ int sensor_dist = 9999;
 int fd; //i2c file descriptor
 char *fileName = "/dev/i2c-1";
 double m_c1,m_c2;
+int color_red;
 
 //=========================================
 /// functions
@@ -228,7 +230,7 @@ TaskState sonarReading(void* private)
 	unsigned int sum = 0;
 	int valid = 0;
 	int i;  
-	for (i = 0; i < 10; i++)  
+	for (i = 0; i < 5; i++)  
 	{  
 		/* trigger reading */  
 		digitalWrite(TRIGGER_PIN, HIGH);  
@@ -251,6 +253,7 @@ TaskState sonarReading(void* private)
 			{  
 				/* no object detected code */  
 				//printf("echo timed out\n"); 
+				delay(60);
 				sum += 65000; //more than 65ms > INFINITY
 				valid++;	   
 			}  
@@ -260,6 +263,7 @@ TaskState sonarReading(void* private)
 			/* sensor not firing code */  
 			//printf("sensor didn't fire\n");  
 			//fail silently and ignore this reading
+			delay(60);
 		}  
 	}
 
@@ -348,17 +352,17 @@ TaskState move(void* private)
 void turnMotors(int angle)
 {
 	char buf[10];
-	int clockwise = (angle > 0);
+	int clockwise = (angle < 0);
 	
     buf[0] = Speed1; // Register to set speed of motor 1
-    buf[1] = (clockwise)?(55):(200); // speed to be set (reverse if needed)
+    buf[1] = (clockwise)?(106):(150); // speed to be set (reverse if needed)
     if ((write(fd, buf, 2)) != 2)
     {
         printf("Error writing to i2c slave\n");
         exit(1);
     }
     buf[0] = Speed2; // motor 2 speed
-    buf[1] = (clockwise)?(200):(55);;
+    buf[1] = (clockwise)?(150):(106);
     if ((write(fd, buf, 2)) != 2)
     {
         printf("Error writing to i2c slave\n");
@@ -372,9 +376,9 @@ TaskState turn(void* private)
 	printf ("turn Enter.(%d deg)", cmd_val);
 	
 	double consign = MMTOSTEP(ROBOT_RADIUS * DEG2RAD(cmd_val));
-	
+	consign = color_red ? -consign : consign;
     //set motors to opposite speeds while traveled arc < consign
-    if(abs(readEncoderValues()) < consign)
+    if(abs(readEncoderValues()) < abs(consign))
     { // Check the value of encoder 1 and stop after it has traveled a set distance
         turnMotors(consign);
         return TASK_RUNNING;
@@ -409,7 +413,7 @@ RobState selectNextAction(Task* current_task)
 	case ACTION_MOVE:
 		puts("======= MOVE ACTION=============");
 		cmd_val = malloc(sizeof(int));
-		*cmd_val = 200; //mm
+		*cmd_val = 1500; //mm
 		Task* move_task = malloc(sizeof(Task));
 		move_task->task = move;
 		move_task->state = TASK_INIT;
@@ -504,6 +508,22 @@ int main (void)
 		printf("Software version: %u\n", buf[0]);
 	}
 	
+	/* tell user that the program is started */
+	digitalWrite(SENSOR_DEBUG_PIN, LOW);
+	delay(500);
+	digitalWrite(SENSOR_DEBUG_PIN, HIGH);
+	delay(500);
+	digitalWrite(SENSOR_DEBUG_PIN, LOW);
+	delay(500);
+	digitalWrite(SENSOR_DEBUG_PIN, HIGH);
+	delay(500);
+	digitalWrite(SENSOR_DEBUG_PIN, LOW);
+	delay(500);
+	digitalWrite(SENSOR_DEBUG_PIN, HIGH);
+	delay(500);
+	digitalWrite(SENSOR_DEBUG_PIN, LOW);
+	delay(500);
+	
 	/* start main loop */
 	state = CHECK_START;
 	Task* first_task = malloc(sizeof(Task));
@@ -555,7 +575,12 @@ int main (void)
 				break;
 			case INIT:
 				round_start_time = millis();
-				alarm (90);
+				alarm (88);
+				color_red = digitalRead(COLOR_SELECT);
+				if(color_red)
+					printf("ROUGE !!!\n");
+				else
+					printf("JAUNE !!!\n");
 				state = STRAT;
 				break;
 			case CHECK_START:
@@ -593,6 +618,8 @@ int main (void)
 end_of_program:
 	y = millis();
 	printf("Tps: %dms (total %d ms)",y-round_start_time, y);
+	digitalWrite(SENSOR_DEBUG_PIN, LOW);
+	resetEncoders();
 	system("echo sudo reboot");
 	return EXIT_SUCCESS;
 }
