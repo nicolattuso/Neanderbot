@@ -336,12 +336,23 @@ void driveMotors(unsigned char speed)
 
 TaskState move(void* private)
 {
+	static int blocking_count = 0;
 	MoveCommand* cmd_val = (MoveCommand*)(private);
 	double ticks = MMTOSTEP(cmd_val->dist);
 	
 	double sonarEcho;
-	
-    if(abs(readEncoderValues()) < ticks)
+	long last_encoder_value = m_c1;
+	long encoder_value = readEncoderValues();
+	if(abs(encoder_value-last_encoder_value) < 10) {
+		blocking_count++;
+	} else {
+		blocking_count = 0;
+	}
+	if(blocking_count > 2) {
+		blocking_count = 0;
+		return TASK_DONE;
+	}
+    if(abs(encoder_value) < ticks)
     { // Check the value of encoder 1 and stop after it has traveled a set distance
 		sonarEcho = sensor_dist/58;
 		
