@@ -316,7 +316,7 @@ void driveMotors(void)
 	}
 }
 
-TaskType move(void* private)
+TaskState move(void* private)
 {
 	int cmd_val = *((int*)(private));
 	double ticks = MMTOSTEP(cmd_val);
@@ -366,7 +366,7 @@ void turnMotors(int angle)
     }
 }
 
-TaskType turn(void* private)
+TaskState turn(void* private)
 {
 	int cmd_val = *((int*)(private));
 	printf ("turn Enter.(%d mm)", cmd_val);
@@ -412,7 +412,7 @@ RobState selectNextAction(Task* current_task)
 		cmd_val = malloc(sizeof(int));
 		*cmd_val = 200; //mm
 		Task* move_task = malloc(sizeof(Task));
-		move_task->task = sonarReading;
+		move_task->task = move;
 		move_task->state = TASK_INIT;
 		move_task->type = TASK_MOVE;
 		move_task->next = NULL;
@@ -429,7 +429,7 @@ RobState selectNextAction(Task* current_task)
 		cmd_val = malloc(sizeof(int));
 		*cmd_val = 180; //deg
 		Task* turn_task = malloc(sizeof(Task));
-		turn_task->task = sonarReading;
+		turn_task->task = turn;
 		turn_task->state = TASK_INIT;
 		turn_task->type = TASK_TURN;
 		turn_task->next = NULL;
