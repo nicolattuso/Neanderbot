@@ -369,13 +369,12 @@ void turnMotors(int angle)
 TaskState turn(void* private)
 {
 	int cmd_val = *((int*)(private));
-	printf ("turn Enter.(%d mm)", cmd_val);
-	resetEncoders();
+	printf ("turn Enter.(%d deg)", cmd_val);
 	
 	double consign = MMTOSTEP(ROBOT_RADIUS * DEG2RAD(cmd_val));
 	
     //set motors to opposite speeds while traveled arc < consign
-    if(readEncoderValues() < consign)
+    if(abs(readEncoderValues()) < consign)
     { // Check the value of encoder 1 and stop after it has traveled a set distance
         turnMotors(consign);
         return TASK_RUNNING;
@@ -418,12 +417,15 @@ RobState selectNextAction(Task* current_task)
 		move_task->next = NULL;
 		move_task->previous = NULL;
 		move_task->private = (void*) cmd_val;
+		resetEncoders();
 		append_task(current_task, move_task);
+		act_count++;
 		return ACTION;
 	case ACTION_WAIT:
 		puts("======= Waiting =============");
 		delay(500);
-		break;
+		act_count++;
+		return STRAT;
 	case ACTION_TURN:
 		puts("======= turn ACTION=============");
 		cmd_val = malloc(sizeof(int));
@@ -435,15 +437,17 @@ RobState selectNextAction(Task* current_task)
 		turn_task->next = NULL;
 		turn_task->previous = NULL;
 		turn_task->private = (void*) cmd_val;
+		resetEncoders();
 		append_task(current_task, turn_task);
+		act_count++;
 		return ACTION;
 		
 	default:
 		puts ("No more actions to do.");
 		stopMotors();
+		act_count++;
 		return END;
 	}
-	act_count++;
 }
 
 int main (void)
