@@ -419,8 +419,8 @@ void checkForStart(void)
 	
 	int input;
 	int entries[2] = {0,0};
-	
-	for(int i=0; i<10; i++)
+	int i;
+	for(i=0; i<10; i++)
 	{
 		input = digitalRead(JACK_PIN);
 		//printf("%d",input);
