@@ -48,6 +48,7 @@
 #define RELAY_OUT_PIN 4
 
 #define DIST_THRESHOLD 20 //cm
+#define DIST_THRESHOLD_APPROACH 15 //cm
 
 #define MD25ADDRESS 0x58          // Address of MD25 shifted one bit
 
@@ -119,15 +120,25 @@ typedef enum ActionType {
 	ACTION_MOVE,
 	ACTION_WAIT,
 	ACTION_TURN,
+	ACTION_WAIT2,
+	ACTION_APPROACH,
+	ACTION_WAIT3,
+	ACTION_BACK,
+	ACTION_WAIT4,
 	ACTION_STOP,
 	NUM_ACTIONS
 } ActionType;
 
+typedef struct MoveCommand {
+	int dist;
+	unsigned char speed;
+} MoveCommand;
 
 //=========================================
 /// globals
 //=========================================
 RobState state = LOAD;
+int sonar_enabled = 1;
 int sensor_dist = 9999;
 int fd; //i2c file descriptor
 char *fileName = "/dev/i2c-1";
@@ -230,6 +241,9 @@ TaskState sonarReading(void* private)
 	unsigned int sum = 0;
 	int valid = 0;
 	int i;  
+	if (!sonar_enabled) { //do nothing
+		return TASK_RUNNING;
+	}
 	for (i = 0; i < 5; i++)  
 	{  
 		/* trigger reading */  
@@ -301,18 +315,18 @@ long readEncoderValues (void)
     return m_c1;
 }
 
-void driveMotors(void)
+void driveMotors(unsigned char speed)
 {
 	char buf[10];
 	buf[0] = Speed1; // Register to set speed of motor 1
-	buf[1] = 180;//200; // speed to be set
+	buf[1] = speed;//200; // speed to be set
 	if ((write(fd, buf, 2)) != 2) 
 	{ 
 		printf("Error writing to i2c slave\n"); 
 		exit(1); 
 	}
 	buf[0] = Speed2; // motor 2 speed
-	buf[1] = 180;//200; 
+	buf[1] = speed;//200; 
 	if ((write(fd, buf, 2)) != 2) 
 	{ 
 		printf("Error writing to i2c slave\n");
@@ -322,12 +336,12 @@ void driveMotors(void)
 
 TaskState move(void* private)
 {
-	int cmd_val = *((int*)(private));
-	double ticks = MMTOSTEP(cmd_val);
+	MoveCommand* cmd_val = (MoveCommand*)(private);
+	double ticks = MMTOSTEP(cmd_val->dist);
 	
 	double sonarEcho;
 	
-    if(readEncoderValues() < ticks)
+    if(abs(readEncoderValues()) < ticks)
     { // Check the value of encoder 1 and stop after it has traveled a set distance
 		sonarEcho = sensor_dist/58;
 		
@@ -338,7 +352,7 @@ TaskState move(void* private)
 			return TASK_RUNNING;
 		}
 		else {
-			driveMotors();
+			driveMotors(cmd_val->speed);
 			return TASK_RUNNING;
 		}
     } else {
@@ -355,14 +369,14 @@ void turnMotors(int angle)
 	int clockwise = (angle < 0);
 	
     buf[0] = Speed1; // Register to set speed of motor 1
-    buf[1] = (clockwise)?(106):(150); // speed to be set (reverse if needed)
+    buf[1] = (clockwise)?(116):(140); // speed to be set (reverse if needed)
     if ((write(fd, buf, 2)) != 2)
     {
         printf("Error writing to i2c slave\n");
         exit(1);
     }
     buf[0] = Speed2; // motor 2 speed
-    buf[1] = (clockwise)?(150):(106);
+    buf[1] = (clockwise)?(140):(116);
     if ((write(fd, buf, 2)) != 2)
     {
         printf("Error writing to i2c slave\n");
@@ -406,14 +420,16 @@ void append_task(Task* current, Task* new) {
 RobState selectNextAction(Task* current_task)
 {
 	static int act_count;
-	int * cmd_val;
+	MoveCommand * cmd_val;
+	int * angle_val;
 	printf ("Can proceed. Action %d\n", act_count);
 	switch(act_count)
 	{
 	case ACTION_MOVE:
 		puts("======= MOVE ACTION=============");
-		cmd_val = malloc(sizeof(int));
-		*cmd_val = 1500; //mm
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 1300; //mm
+		cmd_val->speed = 180;
 		Task* move_task = malloc(sizeof(Task));
 		move_task->task = move;
 		move_task->state = TASK_INIT;
@@ -432,20 +448,71 @@ RobState selectNextAction(Task* current_task)
 		return STRAT;
 	case ACTION_TURN:
 		puts("======= turn ACTION=============");
-		cmd_val = malloc(sizeof(int));
-		*cmd_val = 180; //deg
+		angle_val = malloc(sizeof(int));
+		*angle_val = 90; //deg
 		Task* turn_task = malloc(sizeof(Task));
 		turn_task->task = turn;
 		turn_task->state = TASK_INIT;
 		turn_task->type = TASK_TURN;
 		turn_task->next = NULL;
 		turn_task->previous = NULL;
-		turn_task->private = (void*) cmd_val;
+		turn_task->private = (void*) angle_val;
 		resetEncoders();
 		append_task(current_task, turn_task);
 		act_count++;
 		return ACTION;
-		
+	case ACTION_WAIT2:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
+	case ACTION_APPROACH:
+		puts("======= approach ACTION=============");
+		sonarReading(NULL);
+		if((sensor_dist/58) > DIST_THRESHOLD_APPROACH) {
+			sonar_enabled = 0;
+			cmd_val = malloc(sizeof(MoveCommand));
+			cmd_val->dist = 600; //mm
+			cmd_val->speed = 180;
+			Task* approach_task = malloc(sizeof(Task));
+			approach_task->task = move;
+			approach_task->state = TASK_INIT;
+			approach_task->type = TASK_MOVE;
+			approach_task->next = NULL;
+			approach_task->previous = NULL;
+			approach_task->private = (void*) cmd_val;
+			resetEncoders();
+			append_task(current_task, approach_task);
+			act_count++;
+			return ACTION;
+		}
+		return ACTION;
+	case ACTION_WAIT3:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
+	case ACTION_BACK:
+		puts("======= moving back ACTION=============");
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 50; //mm
+		cmd_val->speed = 100;
+		Task* move_back_task = malloc(sizeof(Task));
+		move_back_task->task = move;
+		move_back_task->state = TASK_INIT;
+		move_back_task->type = TASK_MOVE;
+		move_back_task->next = NULL;
+		move_back_task->previous = NULL;
+		move_back_task->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, move_back_task);
+		act_count++;
+		return ACTION;
+	case ACTION_WAIT4:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
 	default:
 		puts ("No more actions to do.");
 		stopMotors();
