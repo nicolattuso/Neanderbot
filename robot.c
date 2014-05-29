@@ -585,6 +585,13 @@ int main (void)
 	{
 		printf("Software version: %u\n", buf[0]);
 	}
+	buf[0] = Acceleration; // Register to set acceleration
+	buf[1] = 2; //default = 5
+	if ((write(fd, buf, 2)) != 2) 
+	{ 
+		printf("Error writing to i2c slave\n"); 
+		exit(1); 
+	}
 	
 	/* tell user that the program is started */
 	digitalWrite(SENSOR_DEBUG_PIN, LOW);
