@@ -580,7 +580,7 @@ RobState selectNextAction(Task* current_task)
 		puts("======= MOVE ACTION=============");
 		sonar_enabled = 1;
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 430; //mm
+		cmd_val->dist = 410; //mm
 		cmd_val->speed = 150;
 		Task* move_back_task2 = malloc(sizeof(Task));
 		move_back_task2->task = move;
@@ -623,7 +623,7 @@ RobState selectNextAction(Task* current_task)
 		puts("======= MOVE ACTION=============");
 		sonar_enabled = 1;
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 900; //mm
+		cmd_val->dist = 880; //mm
 		cmd_val->speed = 150;
 		Task* move_fire_task = malloc(sizeof(Task));
 		move_fire_task->task = move;
