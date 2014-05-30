@@ -136,6 +136,17 @@ typedef enum ActionType {
 	ACTION_TURN_LAST,
 	ACTION_WAIT9,
 	ACTION_MOVE_LAST,
+	ACTION_FALLBACK,
+	ACTION_WAIT10,
+	ACTION_MOVE_FALLBACK,
+	ACTION_TURN_BACK_TO_FRESK,
+	ACTION_MOVE_BACK_TO_FRESK,
+	ACTION_BACK_TO_FRESK,
+	ACTION_BACK_TO_FRESK_MOVE1,
+	ACTION_BACK_TO_FRESK_TURN,
+	ACTION_BACK_TO_FRESK_MOVE2,
+	ACTION_DIRECT_TO_FIRE2,
+	ACTION_DIRECT_TO_FIRE2_TURN,
 	ACTION_STOP,
 	NUM_ACTIONS
 } ActionType;
@@ -155,6 +166,7 @@ int fd; //i2c file descriptor
 char *fileName = "/dev/i2c-1";
 double m_c1,m_c2;
 int color_red;
+int must_change_strat = 0;
 
 //=========================================
 /// functions
@@ -349,6 +361,8 @@ TaskState move(void* private)
 {
 	static int blocking_count = 0;
 	static int first_step = 1;
+	static int start_time = -1;
+	int timeout = 10000;
 	MoveCommand* cmd_val = (MoveCommand*)(private);
 	int ticks = MMTOSTEP(cmd_val->dist);
 	
@@ -358,6 +372,26 @@ TaskState move(void* private)
 	
 	if(sonar_enabled == 0) {
 		delay(200);
+	}
+	
+	if(start_time == -1)
+		start_time = millis();
+	if((millis()-start_time) > timeout) {
+		printf("timeout\n");
+		//TODO: undo the move
+		resetEncoders();
+		last_encoder_value = encoder_value;
+		encoder_value = 0;
+		while (abs(encoder_value) < last_encoder_value) {
+			driveMotors(256 - cmd_val->speed);
+			delay(10);
+			encoder_value = readEncoderValues();
+		}
+		stopMotors();
+		start_time = -1;
+		resetEncoders();
+		must_change_strat = 1;
+		return TASK_DONE;
 	}
 	
     if(abs(encoder_value) < abs(ticks))
@@ -383,6 +417,7 @@ TaskState move(void* private)
 					blocking_count = 0;
 					printf("finish1\n");
 					first_step = 1;
+					start_time = -1;
 					return TASK_DONE;
 				}
 			}
@@ -394,11 +429,13 @@ TaskState move(void* private)
 		stopMotors();
 		printf("finish2\n");
 		first_step = 1;
+		start_time = -1;
 		return TASK_DONE;
 	}
 	//should not happen
 	printf("finish3\n");
 	first_step = 1;
+	start_time = -1;
 	return TASK_DONE;
 }
 
@@ -459,6 +496,9 @@ void append_task(Task* current, Task* new) {
 RobState selectNextAction(Task* current_task)
 {
 	static int act_count;
+	static int sonar_blocked_task = 0;
+	static int fresk_done = 0;
+	static int second_fire_done = 0;
 	MoveCommand * cmd_val;
 	int * angle_val;
 	printf ("Can proceed. Action %d\n", act_count);
@@ -483,7 +523,12 @@ RobState selectNextAction(Task* current_task)
 	case ACTION_WAIT:
 		puts("======= Waiting =============");
 		delay(500);
-		act_count++;
+		if(!must_change_strat) {
+			act_count++;
+		} else {
+			must_change_strat = 0;
+			act_count = ACTION_DIRECT_TO_FIRE2;
+		}
 		return STRAT;
 	case ACTION_TURN:
 		puts("======= turn ACTION=============");
@@ -521,11 +566,17 @@ RobState selectNextAction(Task* current_task)
 			approach_task->previous = NULL;
 			approach_task->private = (void*) cmd_val;
 			resetEncoders();
+			fresk_done = 1;
 			append_task(current_task, approach_task);
 			act_count++;
 			return ACTION;
+		} else {
+			sonar_blocked_task ++;
+			if(sonar_blocked_task > 10) {
+				act_count = ACTION_FALLBACK;
+			}
+			return STRAT;
 		}
-		return STRAT;
 	case ACTION_WAIT3:
 		puts("======= Waiting =============");
 		delay(2000);
@@ -580,7 +631,7 @@ RobState selectNextAction(Task* current_task)
 		puts("======= MOVE ACTION=============");
 		sonar_enabled = 1;
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 410; //mm
+		cmd_val->dist = 400; //mm
 		cmd_val->speed = 150;
 		Task* move_back_task2 = malloc(sizeof(Task));
 		move_back_task2->task = move;
@@ -666,7 +717,7 @@ RobState selectNextAction(Task* current_task)
 		puts("======= MOVE ACTION=============");
 		sonar_enabled = 1;
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 1000; //mm
+		cmd_val->dist = 500; //mm
 		cmd_val->speed = 150;
 		Task* move_last_task = malloc(sizeof(Task));
 		move_last_task->task = move;
@@ -677,7 +728,192 @@ RobState selectNextAction(Task* current_task)
 		move_last_task->private = (void*) cmd_val;
 		resetEncoders();
 		append_task(current_task, move_last_task);
+		second_fire_done = 1;
+		if(fresk_done) {
+			act_count = ACTION_STOP;
+		} else {
+			act_count = ACTION_BACK_TO_FRESK;
+		}
+		return ACTION;
+	case ACTION_FALLBACK:
+		puts("======= turn ACTION=============");
+		angle_val = malloc(sizeof(int));
+		*angle_val = 90; //deg
+		Task* fallback_turn_task = malloc(sizeof(Task));
+		fallback_turn_task->task = turn;
+		fallback_turn_task->state = TASK_INIT;
+		fallback_turn_task->type = TASK_TURN;
+		fallback_turn_task->next = NULL;
+		fallback_turn_task->previous = NULL;
+		fallback_turn_task->private = (void*) angle_val;
+		resetEncoders();
+		append_task(current_task, fallback_turn_task);
 		act_count++;
+		return ACTION;
+	case ACTION_WAIT10:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
+	case ACTION_MOVE_FALLBACK:
+		puts("======= MOVE ACTION=============");
+		sonar_enabled = 1;
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 880; //mm
+		cmd_val->speed = 150;
+		Task* move_fallback_task = malloc(sizeof(Task));
+		move_fallback_task->task = move;
+		move_fallback_task->state = TASK_INIT;
+		move_fallback_task->type = TASK_MOVE;
+		move_fallback_task->next = NULL;
+		move_fallback_task->previous = NULL;
+		move_fallback_task->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, move_fallback_task);
+		if(second_fire_done == 1) {
+			if(fresk_done) {
+				act_count = ACTION_STOP;
+			} else {
+				act_count++;
+			}
+		} else {
+			act_count = ACTION_TURN_LAST;
+		}
+		return ACTION;
+	case ACTION_TURN_BACK_TO_FRESK:
+		angle_val = malloc(sizeof(int));
+		*angle_val = 180; //deg
+		Task* fallback_turn_back_to_fresk_task = malloc(sizeof(Task));
+		fallback_turn_back_to_fresk_task->task = turn;
+		fallback_turn_back_to_fresk_task->state = TASK_INIT;
+		fallback_turn_back_to_fresk_task->type = TASK_TURN;
+		fallback_turn_back_to_fresk_task->next = NULL;
+		fallback_turn_back_to_fresk_task->previous = NULL;
+		fallback_turn_back_to_fresk_task->private = (void*) angle_val;
+		resetEncoders();
+		append_task(current_task, fallback_turn_back_to_fresk_task);
+		act_count++;
+		delay(500);
+		return ACTION;
+	case ACTION_MOVE_BACK_TO_FRESK:
+		puts("======= MOVE ACTION=============");
+		sonar_enabled = 1;
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 880; //mm
+		cmd_val->speed = 150;
+		Task* move_back_to_fresk_task = malloc(sizeof(Task));
+		move_back_to_fresk_task->task = move;
+		move_back_to_fresk_task->state = TASK_INIT;
+		move_back_to_fresk_task->type = TASK_MOVE;
+		move_back_to_fresk_task->next = NULL;
+		move_back_to_fresk_task->previous = NULL;
+		move_back_to_fresk_task->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, move_back_to_fresk_task);
+		act_count = ACTION_TURN;
+		delay(500);
+		return ACTION;
+	case ACTION_BACK_TO_FRESK:
+		angle_val = malloc(sizeof(int));
+		*angle_val = 180; //deg
+		Task* back_to_fresk_task = malloc(sizeof(Task));
+		back_to_fresk_task->task = turn;
+		back_to_fresk_task->state = TASK_INIT;
+		back_to_fresk_task->type = TASK_TURN;
+		back_to_fresk_task->next = NULL;
+		back_to_fresk_task->previous = NULL;
+		back_to_fresk_task->private = (void*) angle_val;
+		resetEncoders();
+		append_task(current_task, back_to_fresk_task);
+		act_count++;
+		delay(500);
+		return ACTION;
+	case ACTION_BACK_TO_FRESK_MOVE1:
+		puts("======= MOVE ACTION=============");
+		sonar_enabled = 1;
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 500; //mm
+		cmd_val->speed = 150;
+		Task* back_to_fresk_move1_task = malloc(sizeof(Task));
+		back_to_fresk_move1_task->task = move;
+		back_to_fresk_move1_task->state = TASK_INIT;
+		back_to_fresk_move1_task->type = TASK_MOVE;
+		back_to_fresk_move1_task->next = NULL;
+		back_to_fresk_move1_task->previous = NULL;
+		back_to_fresk_move1_task->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, back_to_fresk_move1_task);
+		second_fire_done = 1;
+		act_count++;
+		delay(500);
+		return ACTION;
+	case ACTION_BACK_TO_FRESK_TURN:
+		puts("======= turn ACTION=============");
+		angle_val = malloc(sizeof(int));
+		*angle_val = -90; //deg
+		Task* back_to_fresk_turn_task = malloc(sizeof(Task));
+		back_to_fresk_turn_task->task = turn;
+		back_to_fresk_turn_task->state = TASK_INIT;
+		back_to_fresk_turn_task->type = TASK_TURN;
+		back_to_fresk_turn_task->next = NULL;
+		back_to_fresk_turn_task->previous = NULL;
+		back_to_fresk_turn_task->private = (void*) angle_val;
+		resetEncoders();
+		append_task(current_task, back_to_fresk_turn_task);
+		act_count++;
+		delay(500);
+		return ACTION;
+	case ACTION_BACK_TO_FRESK_MOVE2:
+		puts("======= MOVE ACTION=============");
+		sonar_enabled = 1;
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 880; //mm
+		cmd_val->speed = 150;
+		Task* back_to_fresk_move2_task = malloc(sizeof(Task));
+		back_to_fresk_move2_task->task = move;
+		back_to_fresk_move2_task->state = TASK_INIT;
+		back_to_fresk_move2_task->type = TASK_MOVE;
+		back_to_fresk_move2_task->next = NULL;
+		back_to_fresk_move2_task->previous = NULL;
+		back_to_fresk_move2_task->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, back_to_fresk_move2_task);
+		act_count = ACTION_TURN;
+		delay(500);
+		return ACTION;
+	case ACTION_DIRECT_TO_FIRE2:
+		puts("======= MOVE ACTION=============");
+		sonar_enabled = 1;
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 330; //mm
+		cmd_val->speed = 150;
+		Task* direct_to_fire2_task = malloc(sizeof(Task));
+		direct_to_fire2_task->task = move;
+		direct_to_fire2_task->state = TASK_INIT;
+		direct_to_fire2_task->type = TASK_MOVE;
+		direct_to_fire2_task->next = NULL;
+		direct_to_fire2_task->previous = NULL;
+		direct_to_fire2_task->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, direct_to_fire2_task);
+		act_count++;
+		delay(500);
+		return ACTION;
+	case ACTION_DIRECT_TO_FIRE2_TURN:
+		puts("======= turn ACTION=============");
+		angle_val = malloc(sizeof(int));
+		*angle_val = -90; //deg
+		Task* direct_to_fire2_turn_task = malloc(sizeof(Task));
+		direct_to_fire2_turn_task->task = turn;
+		direct_to_fire2_turn_task->state = TASK_INIT;
+		direct_to_fire2_turn_task->type = TASK_TURN;
+		direct_to_fire2_turn_task->next = NULL;
+		direct_to_fire2_turn_task->previous = NULL;
+		direct_to_fire2_turn_task->private = (void*) angle_val;
+		resetEncoders();
+		append_task(current_task, direct_to_fire2_turn_task);
+		act_count = ACTION_MOVE_LAST;
+		delay(500);
 		return ACTION;
 	default:
 		puts ("No more actions to do.");
