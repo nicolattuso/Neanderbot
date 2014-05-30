@@ -47,7 +47,7 @@
 //?
 #define RELAY_OUT_PIN 4
 
-#define DIST_THRESHOLD 20 //cm
+#define DIST_THRESHOLD 35 //cm
 #define DIST_THRESHOLD_APPROACH 15 //cm
 
 #define MD25ADDRESS 0x58          // Address of MD25 shifted one bit
@@ -125,6 +125,17 @@ typedef enum ActionType {
 	ACTION_WAIT3,
 	ACTION_BACK,
 	ACTION_WAIT4,
+	ACTION_TURN_BACK,
+	ACTION_WAIT5,
+	ACTION_MOVE_BACK,
+	ACTION_WAIT6,
+	ACTION_TURN_NEXT,
+	ACTION_WAIT7,
+	ACTION_MOVE_FIRE,
+	ACTION_WAIT8,
+	ACTION_TURN_LAST,
+	ACTION_WAIT9,
+	ACTION_MOVE_LAST,
 	ACTION_STOP,
 	NUM_ACTIONS
 } ActionType;
@@ -337,40 +348,57 @@ void driveMotors(unsigned char speed)
 TaskState move(void* private)
 {
 	static int blocking_count = 0;
+	static int first_step = 1;
 	MoveCommand* cmd_val = (MoveCommand*)(private);
-	double ticks = MMTOSTEP(cmd_val->dist);
+	int ticks = MMTOSTEP(cmd_val->dist);
 	
 	double sonarEcho;
 	long last_encoder_value = m_c1;
 	long encoder_value = readEncoderValues();
-	if(abs(encoder_value-last_encoder_value) < 10) {
-		blocking_count++;
-	} else {
-		blocking_count = 0;
+	
+	if(sonar_enabled == 0) {
+		delay(200);
 	}
-	if(blocking_count > 2) {
-		blocking_count = 0;
-		return TASK_DONE;
-	}
-    if(abs(encoder_value) < ticks)
+	
+    if(abs(encoder_value) < abs(ticks))
     { // Check the value of encoder 1 and stop after it has traveled a set distance
 		sonarEcho = sensor_dist/58;
 		
 		if(sonarEcho < DIST_THRESHOLD)
 		{
-			puts("Obstacle !!!");
+			printf("Obstacle !!!, encoder = %d -> %d\n", encoder_value, ticks);
 			stopMotors();
+			first_step = 1;
 			return TASK_RUNNING;
 		}
 		else {
+			if (!first_step) {
+				if(abs(encoder_value-last_encoder_value) < 3) {
+					printf("Blocked !!!, encoder = %d vs %d\n", encoder_value, last_encoder_value);
+					blocking_count++;
+				} else {
+					blocking_count = 0;
+				}
+				if(blocking_count > 2) {
+					blocking_count = 0;
+					printf("finish1\n");
+					first_step = 1;
+					return TASK_DONE;
+				}
+			}
+			first_step = 0;
 			driveMotors(cmd_val->speed);
 			return TASK_RUNNING;
 		}
     } else {
 		stopMotors();
+		printf("finish2\n");
+		first_step = 1;
 		return TASK_DONE;
 	}
 	//should not happen
+	printf("finish3\n");
+	first_step = 1;
 	return TASK_DONE;
 }
 
@@ -398,7 +426,7 @@ void turnMotors(int angle)
 TaskState turn(void* private)
 {
 	int cmd_val = *((int*)(private));
-	printf ("turn Enter.(%d deg)", cmd_val);
+	//~ printf ("turn Enter.(%d deg)", cmd_val);
 	
 	double consign = MMTOSTEP(ROBOT_RADIUS * DEG2RAD(cmd_val));
 	consign = color_red ? -consign : consign;
@@ -439,8 +467,8 @@ RobState selectNextAction(Task* current_task)
 	case ACTION_MOVE:
 		puts("======= MOVE ACTION=============");
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 1250; //mm
-		cmd_val->speed = 180;
+		cmd_val->dist = 1210; //mm
+		cmd_val->speed = 150;
 		Task* move_task = malloc(sizeof(Task));
 		move_task->task = move;
 		move_task->state = TASK_INIT;
@@ -484,7 +512,7 @@ RobState selectNextAction(Task* current_task)
 			sonar_enabled = 0;
 			cmd_val = malloc(sizeof(MoveCommand));
 			cmd_val->dist = 600; //mm
-			cmd_val->speed = 180;
+			cmd_val->speed = 165;
 			Task* approach_task = malloc(sizeof(Task));
 			approach_task->task = move;
 			approach_task->state = TASK_INIT;
@@ -497,25 +525,21 @@ RobState selectNextAction(Task* current_task)
 			act_count++;
 			return ACTION;
 		}
-		return ACTION;
+		return STRAT;
 	case ACTION_WAIT3:
 		puts("======= Waiting =============");
-		delay(500);
-		driveMotors(180);
 		delay(2000);
-		driveMotors(100);
-		delay(1500);
-		driveMotors(100);
-		delay(1500);
-		driveMotors(100);
-		delay(1000);
+		driveMotors(165);
+		delay(4000);
+		//~ driveMotors(110);
+		//~ delay(1500);
 		act_count++;
 		return STRAT;
 	case ACTION_BACK:
 		puts("======= moving back ACTION=============");
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 50; //mm
-		cmd_val->speed = 100;
+		cmd_val->dist = 150; //mm
+		cmd_val->speed = 115;
 		Task* move_back_task = malloc(sizeof(Task));
 		move_back_task->task = move;
 		move_back_task->state = TASK_INIT;
@@ -532,6 +556,129 @@ RobState selectNextAction(Task* current_task)
 		delay(500);
 		act_count++;
 		return STRAT;
+	case ACTION_TURN_BACK:
+		puts("======= turn ACTION=============");
+		angle_val = malloc(sizeof(int));
+		*angle_val = 180; //deg
+		Task* turn_back_task = malloc(sizeof(Task));
+		turn_back_task->task = turn;
+		turn_back_task->state = TASK_INIT;
+		turn_back_task->type = TASK_TURN;
+		turn_back_task->next = NULL;
+		turn_back_task->previous = NULL;
+		turn_back_task->private = (void*) angle_val;
+		resetEncoders();
+		append_task(current_task, turn_back_task);
+		act_count++;
+		return ACTION;
+	case ACTION_WAIT5:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
+	case ACTION_MOVE_BACK:
+		puts("======= MOVE ACTION=============");
+		sonar_enabled = 1;
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 430; //mm
+		cmd_val->speed = 150;
+		Task* move_back_task2 = malloc(sizeof(Task));
+		move_back_task2->task = move;
+		move_back_task2->state = TASK_INIT;
+		move_back_task2->type = TASK_MOVE;
+		move_back_task2->next = NULL;
+		move_back_task2->previous = NULL;
+		move_back_task2->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, move_back_task2);
+		act_count++;
+		return ACTION;
+	case ACTION_WAIT6:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
+	case ACTION_TURN_NEXT:
+		puts("======= turn ACTION=============");
+		sonar_enabled = 1;
+		angle_val = malloc(sizeof(int));
+		*angle_val = -90; //deg
+		Task* turn_next_task = malloc(sizeof(Task));
+		turn_next_task->task = turn;
+		turn_next_task->state = TASK_INIT;
+		turn_next_task->type = TASK_TURN;
+		turn_next_task->next = NULL;
+		turn_next_task->previous = NULL;
+		turn_next_task->private = (void*) angle_val;
+		resetEncoders();
+		append_task(current_task, turn_next_task);
+		act_count++;
+		return ACTION;
+	case ACTION_WAIT7:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
+	case ACTION_MOVE_FIRE:
+		puts("======= MOVE ACTION=============");
+		sonar_enabled = 1;
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 900; //mm
+		cmd_val->speed = 150;
+		Task* move_fire_task = malloc(sizeof(Task));
+		move_fire_task->task = move;
+		move_fire_task->state = TASK_INIT;
+		move_fire_task->type = TASK_MOVE;
+		move_fire_task->next = NULL;
+		move_fire_task->previous = NULL;
+		move_fire_task->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, move_fire_task);
+		act_count++;
+		return ACTION;
+	case ACTION_WAIT8:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
+	case ACTION_TURN_LAST:
+		puts("======= turn ACTION=============");
+		sonar_enabled = 1;
+		angle_val = malloc(sizeof(int));
+		*angle_val = 90; //deg
+		Task* turn_last_task = malloc(sizeof(Task));
+		turn_last_task->task = turn;
+		turn_last_task->state = TASK_INIT;
+		turn_last_task->type = TASK_TURN;
+		turn_last_task->next = NULL;
+		turn_last_task->previous = NULL;
+		turn_last_task->private = (void*) angle_val;
+		resetEncoders();
+		append_task(current_task, turn_last_task);
+		act_count++;
+		return ACTION;
+	case ACTION_WAIT9:
+		puts("======= Waiting =============");
+		delay(500);
+		act_count++;
+		return STRAT;
+	case ACTION_MOVE_LAST:
+		puts("======= MOVE ACTION=============");
+		sonar_enabled = 1;
+		cmd_val = malloc(sizeof(MoveCommand));
+		cmd_val->dist = 1000; //mm
+		cmd_val->speed = 150;
+		Task* move_last_task = malloc(sizeof(Task));
+		move_last_task->task = move;
+		move_last_task->state = TASK_INIT;
+		move_last_task->type = TASK_MOVE;
+		move_last_task->next = NULL;
+		move_last_task->previous = NULL;
+		move_last_task->private = (void*) cmd_val;
+		resetEncoders();
+		append_task(current_task, move_last_task);
+		act_count++;
+		return ACTION;
 	default:
 		puts ("No more actions to do.");
 		stopMotors();
