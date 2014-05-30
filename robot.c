@@ -244,7 +244,7 @@ TaskState sonarReading(void* private)
 	if (!sonar_enabled) { //do nothing
 		return TASK_RUNNING;
 	}
-	for (i = 0; i < 5; i++)  
+	for (i = 0; i < 3; i++)  
 	{  
 		/* trigger reading */  
 		digitalWrite(TRIGGER_PIN, HIGH);  
@@ -501,8 +501,14 @@ RobState selectNextAction(Task* current_task)
 	case ACTION_WAIT3:
 		puts("======= Waiting =============");
 		delay(500);
+		driveMotors(180);
+		delay(2000);
 		driveMotors(100);
 		delay(1500);
+		driveMotors(100);
+		delay(1500);
+		driveMotors(100);
+		delay(1000);
 		act_count++;
 		return STRAT;
 	case ACTION_BACK:
