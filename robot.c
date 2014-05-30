@@ -501,6 +501,8 @@ RobState selectNextAction(Task* current_task)
 	case ACTION_WAIT3:
 		puts("======= Waiting =============");
 		delay(500);
+		driveMotors(100);
+		delay(1500);
 		act_count++;
 		return STRAT;
 	case ACTION_BACK:
