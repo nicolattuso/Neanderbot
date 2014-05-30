@@ -439,7 +439,7 @@ RobState selectNextAction(Task* current_task)
 	case ACTION_MOVE:
 		puts("======= MOVE ACTION=============");
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 1300; //mm
+		cmd_val->dist = 1250; //mm
 		cmd_val->speed = 180;
 		Task* move_task = malloc(sizeof(Task));
 		move_task->task = move;
