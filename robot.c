@@ -136,11 +136,14 @@ typedef enum ActionType {
 	ACTION_TURN_LAST,
 	ACTION_WAIT9,
 	ACTION_MOVE_LAST,
+	ACTION_IS_IT_THE_END,
 	ACTION_FALLBACK,
 	ACTION_WAIT10,
 	ACTION_MOVE_FALLBACK,
+	ACTION_WAIT_FALLBACK,
 	ACTION_TURN_BACK_TO_FRESK,
 	ACTION_MOVE_BACK_TO_FRESK,
+	ACTION_WAIT_BACK_TO_FRESK,
 	ACTION_BACK_TO_FRESK,
 	ACTION_BACK_TO_FRESK_MOVE1,
 	ACTION_BACK_TO_FRESK_TURN,
@@ -588,6 +591,7 @@ RobState selectNextAction(Task* current_task)
 		return STRAT;
 	case ACTION_BACK:
 		puts("======= moving back ACTION=============");
+		sonar_enabled = 0;
 		cmd_val = malloc(sizeof(MoveCommand));
 		cmd_val->dist = 150; //mm
 		cmd_val->speed = 115;
@@ -690,7 +694,12 @@ RobState selectNextAction(Task* current_task)
 	case ACTION_WAIT8:
 		puts("======= Waiting =============");
 		delay(500);
-		act_count++;
+		if(must_change_strat) {
+			must_change_strat = 0;
+			act_count--;
+		} else {
+			act_count++;
+		}
 		return STRAT;
 	case ACTION_TURN_LAST:
 		puts("======= turn ACTION=============");
@@ -717,7 +726,7 @@ RobState selectNextAction(Task* current_task)
 		puts("======= MOVE ACTION=============");
 		sonar_enabled = 1;
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 500; //mm
+		cmd_val->dist = 700; //mm
 		cmd_val->speed = 150;
 		Task* move_last_task = malloc(sizeof(Task));
 		move_last_task->task = move;
@@ -729,12 +738,22 @@ RobState selectNextAction(Task* current_task)
 		resetEncoders();
 		append_task(current_task, move_last_task);
 		second_fire_done = 1;
-		if(fresk_done) {
-			act_count = ACTION_STOP;
-		} else {
-			act_count = ACTION_BACK_TO_FRESK;
-		}
+		act_count++;
 		return ACTION;
+	case ACTION_IS_IT_THE_END:
+		puts("======= Waiting =============");
+		delay(500);
+		if(must_change_strat) {
+			must_change_strat = 0;
+			act_count--;
+		} else {
+			if(fresk_done) {
+				act_count = ACTION_STOP;
+			} else {
+				act_count = ACTION_BACK_TO_FRESK;
+			}
+		}
+		return STRAT;
 	case ACTION_FALLBACK:
 		puts("======= turn ACTION=============");
 		angle_val = malloc(sizeof(int));
@@ -770,16 +789,26 @@ RobState selectNextAction(Task* current_task)
 		move_fallback_task->private = (void*) cmd_val;
 		resetEncoders();
 		append_task(current_task, move_fallback_task);
-		if(second_fire_done == 1) {
-			if(fresk_done) {
-				act_count = ACTION_STOP;
-			} else {
-				act_count++;
-			}
-		} else {
-			act_count = ACTION_TURN_LAST;
-		}
+		act_count++;
 		return ACTION;
+	case ACTION_WAIT_FALLBACK:
+		delay(500);
+		if(must_change_strat) {
+			must_change_strat = 0;
+			act_count--;
+			return STRAT;
+		} else {
+			if(second_fire_done == 1) {
+				if(fresk_done) {
+					act_count = ACTION_STOP;
+				} else {
+					act_count++;
+				}
+			} else {
+				act_count = ACTION_TURN_LAST;
+			}
+		}
+		return STRAT;
 	case ACTION_TURN_BACK_TO_FRESK:
 		angle_val = malloc(sizeof(int));
 		*angle_val = 180; //deg
@@ -810,9 +839,17 @@ RobState selectNextAction(Task* current_task)
 		move_back_to_fresk_task->private = (void*) cmd_val;
 		resetEncoders();
 		append_task(current_task, move_back_to_fresk_task);
-		act_count = ACTION_TURN;
-		delay(500);
+		act_count++;
 		return ACTION;
+	case ACTION_WAIT_BACK_TO_FRESK:
+		if(must_change_strat) {
+			must_change_strat = 0;
+			act_count--;
+		} else {
+			act_count = ACTION_TURN;
+		}
+		delay(500);
+		return STRAT;
 	case ACTION_BACK_TO_FRESK:
 		angle_val = malloc(sizeof(int));
 		*angle_val = 180; //deg
@@ -832,7 +869,7 @@ RobState selectNextAction(Task* current_task)
 		puts("======= MOVE ACTION=============");
 		sonar_enabled = 1;
 		cmd_val = malloc(sizeof(MoveCommand));
-		cmd_val->dist = 500; //mm
+		cmd_val->dist = 700; //mm
 		cmd_val->speed = 150;
 		Task* back_to_fresk_move1_task = malloc(sizeof(Task));
 		back_to_fresk_move1_task->task = move;
@@ -848,6 +885,10 @@ RobState selectNextAction(Task* current_task)
 		delay(500);
 		return ACTION;
 	case ACTION_BACK_TO_FRESK_TURN:
+		if(must_change_strat) {
+			act_count--;
+			return STRAT;
+		}
 		puts("======= turn ACTION=============");
 		angle_val = malloc(sizeof(int));
 		*angle_val = -90; //deg
@@ -878,9 +919,17 @@ RobState selectNextAction(Task* current_task)
 		back_to_fresk_move2_task->private = (void*) cmd_val;
 		resetEncoders();
 		append_task(current_task, back_to_fresk_move2_task);
+		act_count++;
+		return ACTION;
+	case ACTION_WAIT_AFTER_FRESK_MOVE2:
+		if(must_change_strat) {
+			must_change_strat = 0;
+			act_count--;
+			return STRAT
+		}
 		act_count = ACTION_TURN;
 		delay(500);
-		return ACTION;
+		return STRAT;
 	case ACTION_DIRECT_TO_FIRE2:
 		puts("======= MOVE ACTION=============");
 		sonar_enabled = 1;
@@ -900,6 +949,10 @@ RobState selectNextAction(Task* current_task)
 		delay(500);
 		return ACTION;
 	case ACTION_DIRECT_TO_FIRE2_TURN:
+		if(must_change_strat) {
+			act_count--;
+			return STRAT;
+		}
 		puts("======= turn ACTION=============");
 		angle_val = malloc(sizeof(int));
 		*angle_val = -90; //deg
@@ -912,9 +965,16 @@ RobState selectNextAction(Task* current_task)
 		direct_to_fire2_turn_task->private = (void*) angle_val;
 		resetEncoders();
 		append_task(current_task, direct_to_fire2_turn_task);
+		act_count++;
+		return ACTION;
+	case ACTION_LAST_WAIT:
+		if(must_change_strat) {
+			act_count--;
+			return STRAT;
+		}
 		act_count = ACTION_MOVE_LAST;
 		delay(500);
-		return ACTION;
+		return STRAT;
 	default:
 		puts ("No more actions to do.");
 		stopMotors();
