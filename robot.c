@@ -148,8 +148,10 @@ typedef enum ActionType {
 	ACTION_BACK_TO_FRESK_MOVE1,
 	ACTION_BACK_TO_FRESK_TURN,
 	ACTION_BACK_TO_FRESK_MOVE2,
+	ACTION_WAIT_AFTER_FRESK_MOVE2,
 	ACTION_DIRECT_TO_FIRE2,
 	ACTION_DIRECT_TO_FIRE2_TURN,
+	ACTION_LAST_WAIT,
 	ACTION_STOP,
 	NUM_ACTIONS
 } ActionType;
@@ -925,7 +927,7 @@ RobState selectNextAction(Task* current_task)
 		if(must_change_strat) {
 			must_change_strat = 0;
 			act_count--;
-			return STRAT
+			return STRAT;
 		}
 		act_count = ACTION_TURN;
 		delay(500);
