@@ -221,6 +221,16 @@ int selectNextObjective(Objective goals[], int goalCount)
 
 }
 
+
+void markDone(int goal,Objective goals[], int goalCount) //NOTE: could be simplified using a global[] & define count
+{
+    goals[goal].done = 1;
+    int i;
+    // unblock all
+    for(i=0; i<goalCount;i++)
+        goals[i].blocked = 0;
+}
+
 //=========================================================
 //  TESTS
 //=========================================================
@@ -442,7 +452,7 @@ int main(void)
     execPath(path);
     printf("Reached target: %d\n", target);
     printf("Pos: %d; Th: %d\n", currentPoint, theta);
-    Goals[target].done = 1;
+    markDone(target,Goals,3);
 
     target = selectNextObjective(Goals,3);
     dijkstra(currentPoint, Goals[target].wayPoint, path);
@@ -451,7 +461,7 @@ int main(void)
     execPath(path);
     printf("Reached target: %d\n", target);
     printf("Pos: %d; Th: %d\n", currentPoint, theta);
-    Goals[target].done = 1;
+    markDone(target,Goals,3);
 
     target = selectNextObjective(Goals,3);
     dijkstra(currentPoint, Goals[target].wayPoint, path);
@@ -463,7 +473,7 @@ int main(void)
     execPath(path);
     printf("Reached target: %d\n", target);
     printf("Pos: %d; Th: %d\n", currentPoint, theta);
-    Goals[target].done = 1;
+    markDone(target,Goals,3);
 
     target = selectNextObjective(Goals,3);
     if(target == -1)
