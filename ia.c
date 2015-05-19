@@ -2,7 +2,8 @@
 // Helper functions to handle robot navigation
 // & objective selection
 // ---------------------------------------------------
-// Martin Raynal, 2014
+// (C) Martin Raynal, 2014
+// NeanderBot 2014
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,9 +89,10 @@ int executeMove(Link l)
 //   Adjacency matrix
 int map[NB_SOMMET][NB_SOMMET] =
         //FROM
+ //0 | 1 | 2 | 3 | 4 | 5 | 6
 {{ 0 , 1 ,INF,INF, 1 ,INF, 1 },
- { 1 , 0 ,INF,INF, 1 ,INF, 1 },
- {INF, 1 , 0 , 1 ,INF,INF,INF},  //T
+ { 1 , 0 ,INF, 1 , 1 ,INF, 1 },
+ {INF, 1 , 0 ,INF,INF,INF,INF},  //T
  {INF,INF, 1 , 0 ,INF,INF,INF},  //O
  { 1 , 1 ,INF,INF, 0 , 1 , 1 },
  {INF,INF,INF,INF, 1 , 0 ,INF},
@@ -104,6 +106,8 @@ void dijkstra(int sr,int ds, int path[])
 {
     if (sr == ds)
         return;
+
+    printf(" > Applying DIJKSTRA from %d to %d.\n",sr, ds);
 
     typedef enum Label{
         perm,tent
@@ -154,6 +158,8 @@ void dijkstra(int sr,int ds, int path[])
             }
         }
         state[k].label=perm;
+
+        //printf(" >>> Am I in an infinite loop ? %d != %d.\n",sr, k);
     } while(k!=sr);
 
     i=0;
@@ -265,7 +271,7 @@ void execPath(int path[])
 //            2->3
 //
 // (0,4,6 & 1 are all interlinked)
-// (1>2>3>1 is a unicdirectionnal loop)
+// (1>2>3>1 is a unidirectionnal loop)
 void hookUpLinks()
 {
     Link l1;
@@ -403,6 +409,7 @@ int main(void)
     currentPoint = STARTPOINT;
     theta = D_0;
 
+    //defineGoals();
     Objective Goals[3];
     Goals[0].baseScore = 6+1; //fresque + fire
     Goals[0].successProbability = 1.0;
@@ -425,6 +432,7 @@ int main(void)
 
     hookUpLinks();
 
+    //init path array
     int path[50];
     int z;
     for (z = 0 ; z < 50 ; z++)
@@ -443,17 +451,18 @@ int main(void)
     //    dijkstra(FRESCO_BACK, FIRE, path);
     //    printPath(path);
 
-    printf("\n\nSelector test\n");
+    printf("\n\nSelector test\n-----------------------------\n");
     printf("Pos: %d; Th: %d\n", currentPoint, theta);
     int target = selectNextObjective(Goals,3);
     dijkstra(currentPoint, Goals[target].wayPoint, path);
     currentPoint = Goals[target].wayPoint;
     printPath(path);
     execPath(path);
-    printf("Reached target: %d\n", target);
+    printf("Reached target: %d\n", Goals[target].wayPoint);
     printf("Pos: %d; Th: %d\n", currentPoint, theta);
     markDone(target,Goals,3);
 
+    printf("-----------------------------\n");
     target = selectNextObjective(Goals,3);
     dijkstra(currentPoint, Goals[target].wayPoint, path);
     currentPoint = Goals[target].wayPoint;
