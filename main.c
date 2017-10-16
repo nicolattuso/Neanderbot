@@ -1,9 +1,9 @@
-#include <stdio.h>  
-#include <stdlib.h>  
-#include <unistd.h>  
-#include <signal.h>  
-#include <string.h>  
-#include <errno.h>  
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <string.h>
+#include <errno.h>
 #include <sys/time.h>
 #include <linux/i2c-dev.h>
 #include <fcntl.h>
