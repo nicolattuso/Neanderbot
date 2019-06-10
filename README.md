@@ -17,3 +17,13 @@ The code runs on a Raspberry Pi model 1 B
   - save the settings
 - check that your computer has an IP in the 10.42.0.0/16 range: `ifconfig`
 - if it is the case, you can log in: `ssh pi@10.42.0.10`
+
+## Installing WiringPi
+
+- log in to the Raspberry pi
+- run the following commands:
+  - cd /tmp
+  - git clone git://git.drogon.net/wiringPi
+  - cd wiringPi
+  - ./build
+- check that the library and tools were correctly installed: `gpio -v`
